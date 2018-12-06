@@ -3,12 +3,9 @@ import matplotlib.pyplot as plt
 
 
 def alignment_plot(profile, config):
-    """
+    """ Plot the alignment lines pixels along the channel axis defined in profile.
 
-    :return:
     """
-
-    config['channel_pixel_adj'] = 0
 
     align = config['pixels']
 
