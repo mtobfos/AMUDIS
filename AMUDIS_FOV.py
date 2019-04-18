@@ -1,11 +1,13 @@
 # Library for the FOV data analysis of AMUDIS entrance optic measured with
 # the Robot Setup
 #
-# Author: Mario Tobar
+# Author: Mario Tobar F.
 # E-mail: mario.tobar.foster@gmail.com
-# History: [20190418] Fist version
+# History: [20190418] First version
 # Status: UNDER DEVELOPMENT
 
+import datetime
+import glob
 import matplotlib.pyplot as plt
 import netCDF4 as nc
 import numpy as np
@@ -24,9 +26,12 @@ def data_arrange(section, config):
     """
     # %% Read data from raw files and save into netcdf4 file
     # ---------------------------
+
+    offset_table = 270 # deviation between table and north(Only when there is
+    # not aligned with the north) IF aligned use 0.
     delta_az = {'1': 22.5,
-               '2': 22.5,  #22.5
-               '3': 15}  #15
+               '2': 22.5,
+               '3': 15}
 
     step_az = {'1': 45,
                 '2': 45,
@@ -36,9 +41,9 @@ def data_arrange(section, config):
                 '2': 48,
                 '3': 75}
 
-    delta_zn = {'1': 22,
-                '2': 22,
-                '3': 25}
+    delta_zn = {'1': 18,
+                '2': 12,
+                '3': 15}
     # ---------------------------
 
     rng = int(360 / step_az[str(section)])  # total of measurements in a section
@@ -48,6 +53,8 @@ def data_arrange(section, config):
         config['name'] = '{:d}m{:d}'.format(section, meas)
 
         files = sorted(glob.glob(config['cwd'] + '/data/Raw/{}/*.nc'.format(config['name'])))
+        print(meas, section)
+        print(config['name'])
 
         # Read positions from txt file
         path = config['cwd'] + '/positions/'
@@ -57,11 +64,11 @@ def data_arrange(section, config):
         position = np.zeros([int(len(raw) / 2), 2])
 
         for i in np.arange(int(len(raw) / 2)):
-            angle = ((meas - 1) * step_az[str(section)]) + raw[2*i] + 180  # azimuth (section 1 is 180 in the rotating table)
+            angle = ((meas - 1) * step_az[str(section)]) + raw[2*i] + offset_table # azimuth (section 1 is 180 in the rotating table)
             if angle > 360:
                 position[i] = angle - 360, raw[2*i + 1]
             else:
-                position[i] = angle, raw[2*i + 1] # azimuth, zenith
+                position[i] = angle, raw[2*i + 1]  # azimuth, zenith
 
         config['positions'] = position
         print(position)
@@ -74,7 +81,7 @@ def data_arrange(section, config):
             zen = config['positions'][i, 1]
             section = str(section)
 
-            centr_az = ((meas - 1) * step_az[section])
+            centr_az = ((meas - 1) * step_az[section] + (360 - offset_table))
 
             if centr_az >= 360:
                 centr_az -= 360
@@ -90,6 +97,8 @@ def data_arrange(section, config):
             if (azim > centr_az - delta_az[section]) & (azim < centr_az + delta_az[section]) & \
             (zen > centr_zn[section] - delta_zn[section]) & (zen < centr_zn[section] + delta_zn[section]):
                 indexs.append(i)
+
+        print(len(indexs))
 
         section = int(section)
         #----------------------
@@ -126,7 +135,7 @@ def data_arrange(section, config):
             dt.Conventions = 'CF-1.6'
             dt.title = 'AMUDIS FOV section {}'.format(config['name'])
             dt.institution = 'Solar Radiation and Remote Sensing, IMuK, University of Hannover, Germany'
-            dt.history = '[20190410] File created'
+            dt.history = '[{}] File created'.format(datetime.datetime.strftime(datetime.datetime.now(), "%Y%m%d_%H%M%S"))
 
             dt['data'][:] = data_raw
             dt['position'][:] = position[indexs]
@@ -201,117 +210,117 @@ def FOV_Dataset(config):
     print('Completed')
 
 
-def find_channel(meas=1, section='1', config=dict()):
-    """Return the indexes of the fibres which are in the scanned area during
-    the FOV measurement using the robot setup"""
-    delta_az = {'1': 35,
-               '2': 35,  #22.5
-               '3': 25}  #15
-
-    step_az = {'1': 45,
-                '2': 45,
-                '3': 30}
-
-    centr_zn = {'1': 18,
-                '2': 48,
-                '3': 75}
-
-    delta_zn = {'1': 22,
-                '2': 22,
-                '3': 25}
-
-    indexs = list()
-    # scan along channel values
-    for i in np.arange(len(config['alignment'])):
-        azim = config['alignment'][i, 0]
-        zen = config['alignment'][i, 1]
-
-        centr_az = ((meas - 1) * step_az[section])
-
-        if centr_az >= 360:
-            centr_az -= 360
-        else:
-            pass
-        # compare position fibre and scanned area
-        if (azim > centr_az - delta_az[section]) & (azim < centr_az + delta_az[section]) & \
-        (zen > centr_zn[section] - delta_zn[section]) & (zen < centr_zn[section] + delta_zn[section]):
-            indexs.append(i)
-
-    return indexs
-
-
-def fov_arrange(meas_range=np.arange(1, 9), section='1', config=dict()):
-    """Divide the fov from the section to individual ranges for the single
-    analysis"""
-
-    for j in meas_range:
-        meas = j
-        section = section
-        indx = find_channel(meas, section, config)
-
-        for i in indx:
-            if i in config['dead_fibres']:
-                print('dead fibre', config['dead_fibres'])
-                pass
-            else:
-                # look for file in folder
-                filename = config['cwd'] + '/single_fibre_data/{:03.0f}.nc'.format(i)
-                files = sorted(glob.glob(config['cwd'] + '/single_fibre_data/*.nc'))
-
-                attrs={'channel':'{:03.0f}'.format(i),
-                   'columns': ['azimuth', 'zenith'],
-                   'angular step':'1º',
-                   'ExposureTime':'80ms',
-                   'Average':'3'}
-
-                # filter data from raw file
-                with xr.open_dataset(config['cwd'] + '/arranged_meas_data/' + '{}m{:02d}.nc'.format(section, meas)) as raw:
-                    data = raw['radiance'].data[:, i, :]
-                    position = raw['positions'].data
-                raw.close()
-
-                if filename in files:
-                    # load data from file
-                    with xr.open_dataset(filename) as old:
-                        rad = old['radiance'].data
-                        pos = old['positions'].data
-                    old.close()
-
-                    rad_app = np.concatenate((rad, data), axis=0)
-                    pos_app = np.concatenate((pos, position), axis=0)
-
-                    ds = xr.Dataset({'radiance':(('position', 'wavelength'), rad_app), 'positions':(('position', 'columns'), pos_app)}, attrs=attrs)
-                    ds.to_netcdf(filename, mode='w', format='NETCDF4', engine='netcdf4')
-                else:
-                    fov_data = xr.DataArray(data, dims=('position', 'wavelength'))
-                    fov_pos = xr.DataArray(position, attrs={'colums': ['azimuth', 'zenith']})
-                    ds = xr.Dataset({'radiance': fov_data, 'positions': fov_pos}, attrs=attrs)
-                    ds.to_netcdf(filename, mode='w', format='NETCDF4', engine='netcdf4')
-
-                ds.close()
+# def find_channel(meas=1, section='1', config=dict()):
+#     """Return the indexes of the fibres which are in the scanned area during
+#     the FOV measurement using the robot setup"""
+#     delta_az = {'1': 35,
+#                '2': 35,  #22.5
+#                '3': 25}  #15
+#
+#     step_az = {'1': 45,
+#                 '2': 45,
+#                 '3': 30}
+#
+#     centr_zn = {'1': 18,
+#                 '2': 48,
+#                 '3': 75}
+#
+#     delta_zn = {'1': 22,
+#                 '2': 22,
+#                 '3': 25}
+#
+#     indexs = list()
+#     # scan along channel values
+#     for i in np.arange(len(config['alignment'])):
+#         azim = config['alignment'][i, 0]
+#         zen = config['alignment'][i, 1]
+#
+#         centr_az = ((meas - 1) * step_az[section])
+#
+#         if centr_az >= 360:
+#             centr_az -= 360
+#         else:
+#             pass
+#         # compare position fibre and scanned area
+#         if (azim > centr_az - delta_az[section]) & (azim < centr_az + delta_az[section]) & \
+#         (zen > centr_zn[section] - delta_zn[section]) & (zen < centr_zn[section] + delta_zn[section]):
+#             indexs.append(i)
+#
+#     return indexs
 
 
-def filter_single(azim, zen, radiance):
-    """Filter the data in the zenith direction to avoid repeated values in the
-    matrix"""
-    indexes = np.empty(0)
-    comp = 0
-    for i in np.arange(1, len(zen)):
-        if zen[i - 1] <= comp:
-            pass
-        else:
-            comp = zen[i - 1]
-        if zen[i] >= comp:
-            indexes = np.append(indexes, i)
-        else:
-            pass
-    indexes = indexes.astype(int)
-    # assign new values to arrays
-    azim = [azim[i] for i in indexes]
-    zen = [zen[i] for i in indexes]
-    radiance = [radiance[i] for i in indexes]
+# def fov_arrange(meas_range=np.arange(1, 9), section='1', config=dict()):
+#     """Divide the fov from the section to individual ranges for the single
+#     analysis"""
+#
+#     for j in meas_range:
+#         meas = j
+#         section = section
+#         indx = find_channel(meas, section, config)
+#
+#         for i in indx:
+#             if i in config['dead_fibres']:
+#                 print('dead fibre', config['dead_fibres'])
+#                 pass
+#             else:
+#                 # look for file in folder
+#                 filename = config['cwd'] + '/single_fibre_data/{:03.0f}.nc'.format(i)
+#                 files = sorted(glob.glob(config['cwd'] + '/single_fibre_data/*.nc'))
+#
+#                 attrs={'channel':'{:03.0f}'.format(i),
+#                    'columns': ['azimuth', 'zenith'],
+#                    'angular step':'1º',
+#                    'ExposureTime':'80ms',
+#                    'Average':'3'}
+#
+#                 # filter data from raw file
+#                 with xr.open_dataset(config['cwd'] + '/arranged_meas_data/' + '{}m{:02d}.nc'.format(section, meas)) as raw:
+#                     data = raw['radiance'].data[:, i, :]
+#                     position = raw['positions'].data
+#                 raw.close()
+#
+#                 if filename in files:
+#                     # load data from file
+#                     with xr.open_dataset(filename) as old:
+#                         rad = old['radiance'].data
+#                         pos = old['positions'].data
+#                     old.close()
+#
+#                     rad_app = np.concatenate((rad, data), axis=0)
+#                     pos_app = np.concatenate((pos, position), axis=0)
+#
+#                     ds = xr.Dataset({'radiance':(('position', 'wavelength'), rad_app), 'positions':(('position', 'columns'), pos_app)}, attrs=attrs)
+#                     ds.to_netcdf(filename, mode='w', format='NETCDF4', engine='netcdf4')
+#                 else:
+#                     fov_data = xr.DataArray(data, dims=('position', 'wavelength'))
+#                     fov_pos = xr.DataArray(position, attrs={'colums': ['azimuth', 'zenith']})
+#                     ds = xr.Dataset({'radiance': fov_data, 'positions': fov_pos}, attrs=attrs)
+#                     ds.to_netcdf(filename, mode='w', format='NETCDF4', engine='netcdf4')
+#
+#                 ds.close()
 
-    return azim, zen, radiance
+
+# def filter_single(azim, zen, radiance):
+#     """Filter the data in the zenith direction to avoid repeated values in the
+#     matrix"""
+#     indexes = np.empty(0)
+#     comp = 0
+#     for i in np.arange(1, len(zen)):
+#         if zen[i - 1] <= comp:
+#             pass
+#         else:
+#             comp = zen[i - 1]
+#         if zen[i] >= comp:
+#             indexes = np.append(indexes, i)
+#         else:
+#             pass
+#     indexes = indexes.astype(int)
+#     # assign new values to arrays
+#     azim = [azim[i] for i in indexes]
+#     zen = [zen[i] for i in indexes]
+#     radiance = [radiance[i] for i in indexes]
+#
+#     return azim, zen, radiance
 
 
 def FOV_plot(azim, zen, radiance, config, type_plot='measured', add_points=False):

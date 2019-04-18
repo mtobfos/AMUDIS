@@ -7,7 +7,7 @@
 #
 # Author: Mario Tobar F.
 # E-mail: mario.tobar.foster@gmail.com
-# History: [20190418] Fist version
+# History: [20190418] First version
 # Status: UNDER DEVELOPMENT
 #
 ###############################################################################
