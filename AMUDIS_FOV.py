@@ -27,7 +27,7 @@ def data_arrange(section, config):
     # %% Read data from raw files and save into netcdf4 file
     # ---------------------------
 
-    offset_table = 270 # deviation between table and north(Only when there is
+    offset_table = -90 # deviation between table and north(Only when there is
     # not aligned with the north) IF aligned use 0.
     delta_az = {'1': 22.5,
                '2': 22.5,
@@ -60,11 +60,11 @@ def data_arrange(section, config):
         path = config['cwd'] + '/positions/'
         file = glob.glob(path + '{}/positions.txt'.format(config['name']))
         raw = np.genfromtxt(file[0], delimiter='::', usecols=5) # raw positions
-
+        # correction of the position
         position = np.zeros([int(len(raw) / 2), 2])
 
         for i in np.arange(int(len(raw) / 2)):
-            angle = ((meas - 1) * step_az[str(section)]) + raw[2*i] + offset_table # azimuth (section 1 is 180 in the rotating table)
+            angle = ((meas - 1) * step_az[str(section)]) + raw[2*i] + offset_table
             if angle > 360:
                 position[i] = angle - 360, raw[2*i + 1]
             else:
@@ -81,7 +81,7 @@ def data_arrange(section, config):
             zen = config['positions'][i, 1]
             section = str(section)
 
-            centr_az = ((meas - 1) * step_az[section] + (360 - offset_table))
+            centr_az = ((meas - 1) * step_az[section]) + (180 + offset_table) #correction for the VIS. IF measurements are aligned with north. Correct it
 
             if centr_az >= 360:
                 centr_az -= 360
